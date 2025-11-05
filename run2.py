@@ -115,7 +115,6 @@ def solve(edges: list[tuple[str, str]]) -> list[str]:
         if nearest_hub is None:
             return ()
         
-        # Собираем все возможные блокировки
         blockable_paths = []
         for vertex in network:
             if not check_if_hub(vertex):
@@ -127,7 +126,6 @@ def solve(edges: list[tuple[str, str]]) -> list[str]:
         blockable_paths = sorted(set(blockable_paths))
         current_edges = set(available_edges)
         
-        # Пробуем каждую блокировку
         for block_option in blockable_paths:
             hub_part, _, regular_part = block_option.partition('-')
             connection_to_remove = normalize_connection(hub_part, regular_part)
@@ -135,17 +133,14 @@ def solve(edges: list[tuple[str, str]]) -> list[str]:
             if connection_to_remove not in current_edges:
                 continue
             
-            # Создаем новую конфигурацию сети
             updated_edges = [e for e in available_edges if e != connection_to_remove]
             updated_edges_tuple = tuple(sorted(updated_edges))
             modified_network = create_adjacency_map(updated_edges_tuple)
             
-            # Проверяем, изолирован ли вирус
             reachable_hub, _ = find_nearest_hub(virus_pos, modified_network)
             if reachable_hub is None:
                 return (block_option,)
             
-            # Симулируем движение вируса
             virus_next_pos = simulate_virus_step(virus_pos, modified_network)
             if virus_next_pos is None:
                 virus_next_pos = virus_pos
@@ -153,7 +148,6 @@ def solve(edges: list[tuple[str, str]]) -> list[str]:
             if check_if_hub(virus_next_pos):
                 continue
             
-            # Рекурсивно ищем дальше
             continuation = explore_strategy(virus_next_pos, updated_edges_tuple)
             if continuation is not None:
                 return (block_option,) + continuation
