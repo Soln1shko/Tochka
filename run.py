@@ -40,7 +40,7 @@ class AmphipodSolver:
             
             for room_idx, char in enumerate(room_chars):
                 if room_idx < 4:
-                    rooms[room_idx].insert(0, char)  # Добавляем в начало, чтобы последний элемент был верхним
+                    rooms[room_idx].insert(0, char)  
         
         return State(
             hallway=tuple(hallway),
