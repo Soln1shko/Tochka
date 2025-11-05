@@ -1,7 +1,8 @@
 import sys
 import collections
+from typing import Dict, Set, List, Tuple, Optional
 
-def solve(edges: list[tuple[str, str]]) -> list[str]:
+def solve(edges: List[Tuple[str, str]]) -> List[str]:
     """
     Решение задачи об изоляции вируса.
 
@@ -24,7 +25,7 @@ def solve(edges: list[tuple[str, str]]) -> list[str]:
     virus_pos = 'a'
     result = []
 
-    def bfs(start_node, current_graph):
+    def bfs(start_node: str, current_graph: Dict[str, Set[str]]) -> Dict[str, int]:
         """Поиск в ширину для нахождения кратчайших расстояний."""
         if start_node not in current_graph:
             return {}
@@ -38,7 +39,7 @@ def solve(edges: list[tuple[str, str]]) -> list[str]:
                     queue.append((neighbor, dist + 1))
         return distances
 
-    def get_virus_target_and_path(start_pos, current_graph, current_gateways):
+    def get_virus_target_and_path(start_pos: str, current_graph: Dict[str, Set[str]], current_gateways: Set[str]) -> Tuple[Optional[str], Optional[str]]:
         """Определяет цель вируса и критический узел на его пути."""
         distances_from_virus = bfs(start_pos, current_graph)
         
