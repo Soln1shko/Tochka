@@ -1,229 +1,178 @@
 import sys
-import collections
-from typing import Dict, Set, List, Tuple, Optional
+from collections import deque, defaultdict
+from functools import lru_cache
 
-def solve(edges: List[Tuple[str, str]]) -> List[str]:
-    """
-    Решение задачи об изоляции вируса.
+
+def normalize_connection(node_a: str, node_b: str) -> tuple[str, str]:
+    """Приводим пару узлов к единому виду для сравнения."""
+    return tuple(sorted([node_a, node_b]))
+
+
+def check_if_hub(vertex: str) -> bool:
+    """Проверяем, является ли узел шлюзом (заглавная буква)."""
+    return vertex[0].isupper()
+
+
+def create_adjacency_map(connections):
+    """Строим граф смежности из списка связей."""
+    adjacency = defaultdict(set)
+    for first, second in connections:
+        adjacency[first].add(second)
+        adjacency[second].add(first)
+    return adjacency
+
+
+def calculate_distances(origin: str, adjacency):
+    """Вычисляем кратчайшие расстояния от исходного узла."""
+    distances = {origin: 0}
+    queue = deque([origin])
+    while queue:
+        current = queue.popleft()
+        for neighbor in adjacency[current]:
+            if neighbor not in distances:
+                distances[neighbor] = distances[current] + 1
+                queue.append(neighbor)
+    return distances
+
+
+def compute_paths_from_hub(hub_node: str, adjacency):
+    """Расчет расстояний от шлюза до всех узлов."""
+    path_lengths = {hub_node: 0}
+    processing_queue = deque([hub_node])
+    while processing_queue:
+        node = processing_queue.popleft()
+        for adjacent in adjacency[node]:
+            if adjacent not in path_lengths:
+                path_lengths[adjacent] = path_lengths[node] + 1
+                processing_queue.append(adjacent)
+    return path_lengths
+
+
+def find_nearest_hub(position: str, adjacency):
+    """Находим ближайший шлюз с учетом лексикографического порядка."""
+    dist_map = calculate_distances(position, adjacency)
+    hub_candidates = []
+    for vertex in adjacency.keys():
+        if check_if_hub(vertex) and vertex in dist_map:
+            hub_candidates.append((dist_map[vertex], vertex))
     
+    if not hub_candidates:
+        return None, None
+    
+    hub_candidates.sort()
+    return hub_candidates[0][1], hub_candidates[0][0]
+
+
+def determine_next_move(position: str, destination_hub: str, adjacency):
+    """Определяем следующий шаг к целевому шлюзу."""
+    hub_distances = compute_paths_from_hub(destination_hub, adjacency)
+    
+    if position not in hub_distances:
+        return None
+    
+    current_distance = hub_distances[position]
+    if current_distance == 0:
+        return None
+    
+    possible_moves = []
+    for neighbor in adjacency[position]:
+        if neighbor in hub_distances and hub_distances[neighbor] == current_distance - 1:
+            possible_moves.append(neighbor)
+    
+    if not possible_moves:
+        return None
+    
+    return sorted(possible_moves)[0]
+
+
+def simulate_virus_step(position: str, adjacency):
+    """Симулируем один шаг движения вируса."""
+    target_hub, _ = find_nearest_hub(position, adjacency)
+    if target_hub is None:
+        return position
+    
+    next_node = determine_next_move(position, target_hub, adjacency)
+    return next_node if next_node is not None else position
+
+
+def solve(edges: list[tuple[str, str]]) -> list[str]:
+    """
+    Решение задачи об изоляции вируса
+
     Args:
         edges: список коридоров в формате (узел1, узел2)
-    
+
     Returns:
         список отключаемых коридоров в формате "Шлюз-узел"
     """
-    # Построение графа
-    graph: Dict[str, Set[str]] = collections.defaultdict(set)
-    gateways: Set[str] = set()
+    normalized_edges = tuple(sorted(normalize_connection(x, y) for x, y in edges))
     
-    for u, v in edges:
-        graph[u].add(v)
-        graph[v].add(u)
-        if u.isupper():
-            gateways.add(u)
-        if v.isupper():
-            gateways.add(v)
-    
-    virus_pos = 'a'
-    result: List[str] = []
-    
-    def bfs(start_node: str, current_graph: Dict[str, Set[str]]) -> Dict[str, int]:
-        """BFS для нахождения кратчайших расстояний от start_node"""
-        if start_node not in current_graph:
-            return {}
+    @lru_cache(maxsize=None)
+    def explore_strategy(virus_pos: str, available_edges: tuple[tuple[str, str], ...]):
+        network = create_adjacency_map(available_edges)
+        nearest_hub, _ = find_nearest_hub(virus_pos, network)
         
-        queue = collections.deque([(start_node, 0)])
-        distances = {start_node: 0}
-        visited = {start_node}
+        if nearest_hub is None:
+            return ()
         
-        while queue:
-            current, dist = queue.popleft()
-            for neighbor in current_graph.get(current, set()):
-                if neighbor not in visited:
-                    visited.add(neighbor)
-                    distances[neighbor] = dist + 1
-                    queue.append((neighbor, dist + 1))
+        # Собираем все возможные блокировки
+        blockable_paths = []
+        for vertex in network:
+            if not check_if_hub(vertex):
+                continue
+            for connected_node in network[vertex]:
+                if not check_if_hub(connected_node):
+                    blockable_paths.append(f"{vertex}-{connected_node}")
         
-        return distances
-    
-    def get_virus_target_and_move(pos: str, current_graph: Dict[str, Set[str]], 
-                                   current_gateways: Set[str]) -> Tuple[Optional[str], Optional[str]]:
-        """
-        Определяет целевой шлюз и следующий ход вируса.
-        Возвращает (target_gateway, next_position) или (None, None) если вирус заблокирован
-        """
-        # Проверяем, достиг ли вирус шлюза
-        if pos in current_gateways:
-            return None, None
+        blockable_paths = sorted(set(blockable_paths))
+        current_edges = set(available_edges)
         
-        # Находим расстояния от текущей позиции вируса
-        distances_from_virus = bfs(pos, current_graph)
-        
-        # Находим достижимые шлюзы
-        reachable_gateways = []
-        for gw in current_gateways:
-            if gw in distances_from_virus:
-                reachable_gateways.append((distances_from_virus[gw], gw))
-        
-        if not reachable_gateways:
-            return None, None
-        
-        # Сортируем по расстоянию, затем лексикографически
-        reachable_gateways.sort()
-        target_gateway = reachable_gateways[0][1]
-        
-        # Находим соседей, которые ближе к целевому шлюзу
-        distances_to_target = bfs(target_gateway, current_graph)
-        current_dist = distances_to_target.get(pos)
-        
-        if current_dist is None:
-            return None, None
-        
-        # Если вирус рядом со шлюзом, он переходит в него
-        if current_dist == 1:
-            return target_gateway, target_gateway
-        
-        # Выбираем следующий узел - лексикографически наименьший среди оптимальных
-        candidates = []
-        for neighbor in current_graph.get(pos, set()):
-            neighbor_dist = distances_to_target.get(neighbor)
-            if neighbor_dist is not None and neighbor_dist == current_dist - 1:
-                candidates.append(neighbor)
-        
-        if candidates:
-            candidates.sort()
-            return target_gateway, candidates[0]
-        
-        return None, None
-    
-    def simulate_full_game(start_pos: str, start_graph: Dict[str, Set[str]], 
-                          start_gateways: Set[str], first_cut: str) -> Optional[List[str]]:
-        """
-        Полная симуляция игры с заданным первым ходом.
-        Возвращает последовательность отключений или None, если вирус достигает шлюза.
-        """
-        # Копируем состояние
-        sim_graph = collections.defaultdict(set)
-        for node, neighbors in start_graph.items():
-            sim_graph[node] = neighbors.copy()
-        
-        sim_gateways = start_gateways.copy()
-        sim_pos = start_pos
-        sim_result = []
-        
-        # Применяем первый ход
-        gw, node = first_cut.split('-')
-        sim_graph[gw].discard(node)
-        sim_graph[node].discard(gw)
-        sim_result.append(first_cut)
-        
-        # Двигаем вирус
-        _, next_pos = get_virus_target_and_move(sim_pos, sim_graph, sim_gateways)
-        if next_pos is None:
-            return sim_result  # Вирус изолирован
-        if next_pos in sim_gateways:
-            return None  # Вирус достиг шлюза
-        sim_pos = next_pos
-        
-        # Продолжаем симуляцию
-        max_iterations = 200  # Защита от бесконечного цикла
-        iteration = 0
-        
-        while iteration < max_iterations:
-            iteration += 1
+        # Пробуем каждую блокировку
+        for block_option in blockable_paths:
+            hub_part, _, regular_part = block_option.partition('-')
+            connection_to_remove = normalize_connection(hub_part, regular_part)
+            
+            if connection_to_remove not in current_edges:
+                continue
+            
+            # Создаем новую конфигурацию сети
+            updated_edges = [e for e in available_edges if e != connection_to_remove]
+            updated_edges_tuple = tuple(sorted(updated_edges))
+            modified_network = create_adjacency_map(updated_edges_tuple)
             
             # Проверяем, изолирован ли вирус
-            target, next_move = get_virus_target_and_move(sim_pos, sim_graph, sim_gateways)
-            if target is None:
-                return sim_result  # Победа!
+            reachable_hub, _ = find_nearest_hub(virus_pos, modified_network)
+            if reachable_hub is None:
+                return (block_option,)
             
-            # Собираем возможные отключения
-            possible_cuts = []
-            for gw in sorted(sim_gateways):
-                for neighbor in sorted(sim_graph.get(gw, set())):
-                    if not neighbor.isupper():
-                        possible_cuts.append(f"{gw}-{neighbor}")
+            # Симулируем движение вируса
+            virus_next_pos = simulate_virus_step(virus_pos, modified_network)
+            if virus_next_pos is None:
+                virus_next_pos = virus_pos
             
-            if not possible_cuts:
-                return None  # Не можем отключить больше коридоров
+            if check_if_hub(virus_next_pos):
+                continue
             
-            # Выбираем первый возможный ход (лексикографический порядок)
-            cut = possible_cuts[0]
-            gw, node = cut.split('-')
-            sim_graph[gw].discard(node)
-            sim_graph[node].discard(gw)
-            sim_result.append(cut)
-            
-            # Двигаем вирус
-            _, next_pos = get_virus_target_and_move(sim_pos, sim_graph, sim_gateways)
-            if next_pos is None:
-                return sim_result  # Вирус изолирован
-            if next_pos in sim_gateways:
-                return None  # Вирус достиг шлюза
-            sim_pos = next_pos
+            # Рекурсивно ищем дальше
+            continuation = explore_strategy(virus_next_pos, updated_edges_tuple)
+            if continuation is not None:
+                return (block_option,) + continuation
         
-        return None  # Не удалось изолировать за разумное время
+        return None
     
-    # Основной цикл игры
-    while True:
-        # Проверяем, изолирован ли вирус
-        target, next_move = get_virus_target_and_move(virus_pos, graph, gateways)
-        if target is None:
-            break  # Вирус изолирован, игра окончена
-        
-        # Собираем все возможные отключения
-        possible_cuts = []
-        for gw in sorted(gateways):
-            for neighbor in sorted(graph.get(gw, set())):
-                if not neighbor.isupper():
-                    possible_cuts.append(f"{gw}-{neighbor}")
-        
-        if not possible_cuts:
-            break
-        
-        # Пробуем каждое отключение и выбираем первое, которое приводит к победе
-        best_cut = None
-        for cut in possible_cuts:
-            sim_result = simulate_full_game(virus_pos, graph, gateways, cut)
-            if sim_result is not None:
-                # Это отключение приводит к победе
-                best_cut = cut
-                break
-        
-        if best_cut is None:
-            # Если симуляция не нашла безопасный ход, используем первый возможный
-            best_cut = possible_cuts[0]
-        
-        # Применяем выбранное отключение
-        gw, node = best_cut.split('-')
-        graph[gw].discard(node)
-        graph[node].discard(gw)
-        result.append(best_cut)
-        
-        # Двигаем вирус
-        _, next_pos = get_virus_target_and_move(virus_pos, graph, gateways)
-        if next_pos is None:
-            break  # Вирус изолирован
-        if next_pos in gateways:
-            break  # Вирус достиг шлюза (не должно произойти в корректном решении)
-        virus_pos = next_pos
-    
-    return result
+    result = explore_strategy('a', normalized_edges)
+    return list(result or [])
 
 
 def main():
     edges = []
-    try:
-        lines = sys.stdin.readlines()
-        for line in lines:
-            line = line.strip()
-            if line:
-                node1, sep, node2 = line.partition('-')
-                if sep:
-                    edges.append((node1, node2))
-    except (IOError, EOFError):
-        pass
-    
+    for line in sys.stdin:
+        line = line.strip()
+        if line:
+            node1, sep, node2 = line.partition('-')
+            if sep:
+                edges.append((node1, node2))
+
     result = solve(edges)
     for edge in result:
         print(edge)
