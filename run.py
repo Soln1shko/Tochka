@@ -214,7 +214,7 @@ class AmphipodSolver:
                     heapq.heappush(frontier, (f, counter, tentative_g, next_state))
                     counter += 1
         
-        return -1  
+        return 0  
 
 
 def solve(lines: List[str]) -> int:
