@@ -129,15 +129,15 @@ class AmphipodSolver:
                 continue
             
             room = state.rooms[room_idx]
-            depth = self.room_depth - len(room) - 1
-            distance = abs(hall_pos - room_pos) + depth + 1
+            depth = self.room_depth - len(room)  # Свободная позиция (сверху вниз от коридора)
+            distance = abs(hall_pos - room_pos) + depth
             cost = distance * self.ENERGY_COST[amphipod]
             
             new_hallway = list(state.hallway)
             new_hallway[hall_pos] = self.EMPTY
             
             new_rooms = [list(room) for room in state.rooms]
-            new_rooms[room_idx] = list(room) + [amphipod]
+            new_rooms[room_idx] = [amphipod] + list(room)  # Добавляем в начало (верх комнаты)
             
             new_state = State(
                 hallway=tuple(new_hallway),
@@ -145,12 +145,15 @@ class AmphipodSolver:
             )
             next_states.append((new_state, cost))
         
+        if next_states:
+            return next_states
+
         for room_idx, room in enumerate(state.rooms):
             if not room or not self.can_leave_room(state, room_idx):
                 continue
             
-            amphipod = room[-1]  
-            depth = self.room_depth - len(room)
+            amphipod = room[-1]  # Верхний объект (ближе к коридору)
+            depth = self.room_depth - len(room) + 1  # Глубина верхнего объекта
             room_pos = list(self.ROOM_POSITIONS.values())[room_idx]
             
             for hall_pos in range(11):
@@ -161,14 +164,14 @@ class AmphipodSolver:
                 if not self.is_path_clear(state, room_pos, hall_pos):
                     continue
                 
-                distance = depth + 1 + abs(room_pos - hall_pos)
+                distance = depth + abs(room_pos - hall_pos)
                 cost = distance * self.ENERGY_COST[amphipod]
                 
                 new_hallway = list(state.hallway)
                 new_hallway[hall_pos] = amphipod
                 
                 new_rooms = [list(r) for r in state.rooms]
-                new_rooms[room_idx] = list(room[:-1])
+                new_rooms[room_idx] = list(room[:-1])  # Убираем верхний элемент
                 
                 new_state = State(
                     hallway=tuple(new_hallway),
