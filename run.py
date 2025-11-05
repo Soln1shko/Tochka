@@ -49,6 +49,11 @@ class AmphipodSolver:
     
     def is_goal(self, state: State) -> bool:
         """Проверка достижения целевого состояния"""
+
+        if any(pos != self.EMPTY for pos in state.hallway):
+            return False
+        
+
         for room_idx, amphipod_type in enumerate(self.AMPHIPOD_TYPES):
             room = state.rooms[room_idx]
             if len(room) != self.room_depth:
@@ -60,27 +65,15 @@ class AmphipodSolver:
     def heuristic(self, state: State) -> int:
         """
         Эвристическая функция для A*.
-        Оценивает минимальную стоимость достижения целевого состояния.
+        Считаем только для объектов в коридоре (как в done.py).
         """
         total_cost = 0
         
         for hall_pos, amphipod in enumerate(state.hallway):
             if amphipod != self.EMPTY:
-                target_room = ord(amphipod) - ord('A')
                 target_pos = self.ROOM_POSITIONS[amphipod]
                 distance = abs(hall_pos - target_pos) + 1
                 total_cost += distance * self.ENERGY_COST[amphipod]
-        
-        for room_idx, room in enumerate(state.rooms):
-            target_type = self.AMPHIPOD_TYPES[room_idx]
-            room_pos = self.ROOM_POSITIONS[target_type]
-            
-            for depth, amphipod in enumerate(room):
-                if amphipod != target_type:
-                    target_room_idx = ord(amphipod) - ord('A')
-                    target_room_pos = self.ROOM_POSITIONS[amphipod]
-                    distance = (depth + 1) + abs(room_pos - target_room_pos) + 1
-                    total_cost += distance * self.ENERGY_COST[amphipod]
         
         return total_cost
     
@@ -104,11 +97,14 @@ class AmphipodSolver:
     
     def is_path_clear(self, state: State, from_pos: int, to_pos: int) -> bool:
         """Проверка свободности пути в коридоре"""
-        start = min(from_pos, to_pos)
-        end = max(from_pos, to_pos)
+
+        if from_pos < to_pos:
+            path = range(from_pos + 1, to_pos + 1)
+        else:
+            path = range(to_pos, from_pos)
         
-        for pos in range(start, end + 1):
-            if pos != from_pos and state.hallway[pos] != self.EMPTY:
+        for pos in path:
+            if state.hallway[pos] != self.EMPTY:
                 return False
         return True
     
@@ -129,7 +125,7 @@ class AmphipodSolver:
                 continue
             
             room = state.rooms[room_idx]
-            depth = self.room_depth - len(room)  # Свободная позиция (сверху вниз от коридора)
+            depth = self.room_depth - len(room)  
             distance = abs(hall_pos - room_pos) + depth
             cost = distance * self.ENERGY_COST[amphipod]
             
@@ -137,7 +133,7 @@ class AmphipodSolver:
             new_hallway[hall_pos] = self.EMPTY
             
             new_rooms = [list(room) for room in state.rooms]
-            new_rooms[room_idx] = [amphipod] + list(room)  # Добавляем в начало (верх комнаты)
+            new_rooms[room_idx] = [amphipod] + list(room)  
             
             new_state = State(
                 hallway=tuple(new_hallway),
@@ -152,8 +148,8 @@ class AmphipodSolver:
             if not room or not self.can_leave_room(state, room_idx):
                 continue
             
-            amphipod = room[-1]  # Верхний объект (ближе к коридору)
-            depth = self.room_depth - len(room) + 1  # Глубина верхнего объекта
+            amphipod = room[-1] 
+            depth = self.room_depth - len(room) + 1  
             room_pos = list(self.ROOM_POSITIONS.values())[room_idx]
             
             for hall_pos in range(11):
@@ -171,7 +167,7 @@ class AmphipodSolver:
                 new_hallway[hall_pos] = amphipod
                 
                 new_rooms = [list(r) for r in state.rooms]
-                new_rooms[room_idx] = list(room[:-1])  # Убираем верхний элемент
+                new_rooms[room_idx] = list(room[:-1])  
                 
                 new_state = State(
                     hallway=tuple(new_hallway),
