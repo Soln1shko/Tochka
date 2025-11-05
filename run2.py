@@ -1,6 +1,7 @@
 import sys
 import collections
 from typing import Dict, Set, List, Tuple, Optional
+import copy
 
 def solve(edges: List[Tuple[str, str]]) -> List[str]:
     """
@@ -12,8 +13,9 @@ def solve(edges: List[Tuple[str, str]]) -> List[str]:
     Returns:
         список отключаемых коридоров в формате "Шлюз-узел"
     """
-    graph = collections.defaultdict(set)
-    gateways = set()
+    graph: Dict[str, Set[str]] = collections.defaultdict(set)
+    gateways: Set[str] = set()
+
     for u, v in edges:
         graph[u].add(v)
         graph[v].add(u)
@@ -23,114 +25,123 @@ def solve(edges: List[Tuple[str, str]]) -> List[str]:
             gateways.add(v)
 
     virus_pos = 'a'
-    result = []
+    result: List[str] = []
 
     def bfs(start_node: str, current_graph: Dict[str, Set[str]]) -> Dict[str, int]:
-        """Поиск в ширину для нахождения кратчайших расстояний."""
         if start_node not in current_graph:
             return {}
         queue = collections.deque([(start_node, 0)])
         distances = {start_node: 0}
+        visited = {start_node}
+        
         while queue:
             current, dist = queue.popleft()
-            for neighbor in sorted(list(current_graph[current])):
-                if neighbor not in distances:
+            for neighbor in sorted(list(current_graph.get(current, set()))):
+                if neighbor not in visited:
+                    visited.add(neighbor)
                     distances[neighbor] = dist + 1
                     queue.append((neighbor, dist + 1))
         return distances
 
-    def get_next_move(pos: str, target_gw: str) -> Optional[str]:
-        """Определяет следующий шаг вируса к цели."""
-        distances_to_target = bfs(target_gw, graph)
-        current_dist = distances_to_target.get(pos)
-        
-        if current_dist is None or current_dist <= 1:
-            return None
-            
-        for neighbor in sorted(list(graph[pos])):
-            if distances_to_target.get(neighbor) == current_dist - 1:
-                return neighbor
-        return None
-
-    while True:
-        distances = bfs(virus_pos, graph)
+    def get_virus_move(pos: str, current_graph: Dict[str, Set[str]], current_gateways: Set[str]) -> Optional[str]:
+        distances_from_virus = bfs(pos, current_graph)
         
         reachable_gateways = []
-        for gw in gateways:
-            if gw in distances:
-                reachable_gateways.append((distances[gw], gw))
-        
+        for gw in sorted(list(current_gateways)):
+            if gw in distances_from_virus:
+                reachable_gateways.append((distances_from_virus[gw], gw))
+
         if not reachable_gateways:
-            break
-        
+            return None
+
         reachable_gateways.sort()
         target_gateway = reachable_gateways[0][1]
-    
-        next_virus_pos = get_next_move(virus_pos, target_gateway)
+
+        distances_to_target = bfs(target_gateway, current_graph)
+        current_dist_to_target = distances_to_target.get(pos)
+
+        if current_dist_to_target is None or current_dist_to_target <= 1:
+            return pos
+
+        for neighbor in sorted(list(current_graph.get(pos, set()))):
+            if distances_to_target.get(neighbor) == current_dist_to_target - 1:
+                return neighbor
         
-        if next_virus_pos is None:
-            result.append(f"{target_gateway}-{virus_pos}")
-            graph[target_gateway].remove(virus_pos)
-            graph[virus_pos].remove(target_gateway)
-            continue
+        return pos
+
+    while True:
+        # Проверка, может ли вирус двигаться. Если нет, игра окончена.
+        if get_virus_move(virus_pos, graph, gateways) is None:
+            break
+
+        possible_cuts = []
+        for gw in sorted(list(gateways)):
+            for neighbor in sorted(list(graph.get(gw, set()))):
+                if not neighbor.isupper():
+                    possible_cuts.append(f"{gw}-{neighbor}")
         
-        gateways_at_next = []
-        for gw in sorted(gateways):
-            if gw in graph.get(next_virus_pos, set()):
-                gateways_at_next.append(gw)
-        
-        if gateways_at_next:
-            gw_to_cut = gateways_at_next[0]
-            result.append(f"{gw_to_cut}-{next_virus_pos}")
-            graph[gw_to_cut].remove(next_virus_pos)
-            graph[next_virus_pos].remove(gw_to_cut)
-        else:
-            distances_to_target = bfs(target_gateway, graph)
-            path_node = virus_pos
+        # Если не осталось коридоров для отключения, выходим.
+        if not possible_cuts:
+            break
             
-            while distances_to_target.get(path_node, -1) > 1:
-                current_dist = distances_to_target.get(path_node)
-                for neighbor in sorted(list(graph[path_node])):
-                    if distances_to_target.get(neighbor) == current_dist - 1:
-                        path_node = neighbor
+        # Инициализируем best_cut первым возможным ходом.
+        best_cut = possible_cuts[0]
+
+        for cut_edge_str in possible_cuts:
+            gw_to_cut, node_to_cut = cut_edge_str.split('-')
+            
+            temp_graph = copy.deepcopy(graph)
+            temp_graph[gw_to_cut].remove(node_to_cut)
+            temp_graph[node_to_cut].remove(gw_to_cut)
+            
+            next_virus_pos = get_virus_move(virus_pos, temp_graph, gateways)
+            
+            is_safe = False
+            # Если вирус заблокирован, ход точно безопасен
+            if next_virus_pos is None:
+                is_safe = True
+            # Иначе проверяем, не окажется ли он рядом со шлюзом
+            else:
+                is_safe_check = True
+                for neighbor in temp_graph.get(next_virus_pos, set()):
+                    if neighbor in gateways:
+                        is_safe_check = False
                         break
+                is_safe = is_safe_check
             
-            result.append(f"{target_gateway}-{path_node}")
-            graph[target_gateway].remove(path_node)
-            graph[path_node].remove(target_gateway)
+            if is_safe:
+                best_cut = cut_edge_str
+                break
         
-        distances_after = bfs(virus_pos, graph)
-        reachable_after = []
-        for gw in gateways:
-            if gw in distances_after:
-                reachable_after.append((distances_after[gw], gw))
-        
-        if reachable_after:
-            reachable_after.sort()
-            new_target = reachable_after[0][1]
-            virus_pos = get_next_move(virus_pos, new_target) or virus_pos
+        gw, node = best_cut.split('-')
+        result.append(best_cut)
+        graph[gw].remove(node)
+        graph[node].remove(gw)
+
+        new_virus_pos = get_virus_move(virus_pos, graph, gateways)
+        if new_virus_pos:
+            virus_pos = new_virus_pos
 
     return result
 
-
 def main():
-    """Основная функция для чтения ввода и вывода результата."""
     edges = []
     try:
-        while True:
-            line = input().strip()
-            if not line:
-                break
-            node1, sep, node2 = line.partition('-')
-            if sep:
-                edges.append((node1, node2))
-    except EOFError:
+        # Используем sys.stdin.readlines() для более простого чтения всех строк
+        lines = sys.stdin.readlines()
+        for line in lines:
+            line = line.strip()
+            if line:
+                node1, sep, node2 = line.partition('-')
+                if sep:
+                    edges.append((node1, node2))
+    except (IOError, EOFError):
         pass
 
     result = solve(edges)
     for edge in result:
         print(edge)
 
-
 if __name__ == "__main__":
     main()
+
